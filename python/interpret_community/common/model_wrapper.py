@@ -194,10 +194,11 @@ class WrappedPytorchModel(object):
 class WrappedClassificationModel(object):
     """A class for wrapping a classification model."""
 
-    def __init__(self, model, eval_function):
+    def __init__(self, model, eval_function, examples=None):
         """Initialize the WrappedClassificationModel with the model and evaluation function."""
         self._eval_function = eval_function
         self._model = model
+        self._examples = examples
 
     def predict(self, dataset):
         """Predict the output using the wrapped classification model.
@@ -234,14 +235,41 @@ class WrappedClassificationModel(object):
 
         return proba_preds
 
+    def __getstate__(self):
+        """Influence how WrappedClassificationModel is pickled.
+
+        Removes _eval_function which may not be serializable.
+
+        :return state: The state to be pickled, with _eval_function removed.
+        :rtype: dict
+        """
+        odict = self.__dict__.copy()
+        if self._examples is not None:
+            del odict['_eval_function']
+        return odict
+
+    def __setstate__(self, state):
+        """Influence how WrappedClassificationModel is unpickled.
+
+        Re-adds _eval_function which may not be serializable.
+
+        :param dict: A dictionary of deserialized state.
+        :type dict: dict
+        """
+        self.__dict__.update(state)
+        if self._examples is not None:
+            eval_function, _ = _eval_model(self._model, self._examples, ModelTask.Classification)
+            self._eval_function = eval_function
+
 
 class WrappedRegressionModel(object):
     """A class for wrapping a regression model."""
 
-    def __init__(self, model, eval_function):
+    def __init__(self, model, eval_function, examples=None):
         """Initialize the WrappedRegressionModel with the model and evaluation function."""
         self._eval_function = eval_function
         self._model = model
+        self._examples = examples
 
     def predict(self, dataset):
         """Predict the output using the wrapped regression model.
@@ -254,6 +282,32 @@ class WrappedRegressionModel(object):
             preds = preds.values.ravel()
 
         return preds
+
+    def __getstate__(self):
+        """Influence how WrappedRegressionModel is pickled.
+
+        Removes _eval_function which may not be serializable.
+
+        :return state: The state to be pickled, with _eval_function removed.
+        :rtype: dict
+        """
+        odict = self.__dict__.copy()
+        if self._examples is not None:
+            del odict['_eval_function']
+        return odict
+
+    def __setstate__(self, state):
+        """Influence how WrappedRegressionModel is unpickled.
+
+        Re-adds _eval_function which may not be serializable.
+
+        :param dict: A dictionary of deserialized state.
+        :type dict: dict
+        """
+        self.__dict__.update(state)
+        if self._examples is not None:
+            eval_function, _ = _eval_model(self._model, self._examples, ModelTask.Regression)
+            self._eval_function = eval_function
 
 
 class WrappedClassificationWithoutProbaModel(object):
@@ -342,9 +396,9 @@ def _wrap_model(model, examples, model_task, is_function):
             model = WrappedClassificationWithoutProbaModel(model)
         eval_function, eval_ml_domain = _eval_model(model, examples, model_task)
         if eval_ml_domain == ModelTask.Classification:
-            return WrappedClassificationModel(model, eval_function), eval_ml_domain
+            return WrappedClassificationModel(model, eval_function, examples), eval_ml_domain
         else:
-            return WrappedRegressionModel(model, eval_function), eval_ml_domain
+            return WrappedRegressionModel(model, eval_function, examples), eval_ml_domain
 
 
 def _classifier_without_proba(model):
